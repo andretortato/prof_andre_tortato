@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tetris Lúdico - Prof. André Rafael Tortato</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Fredoka for playful headers, Inter for UI -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti Library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        fredoka: ['Fredoka', 'sans-serif'],
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        tetris: {
+                            bg: '#0f172a',
+                            panel: '#1e293b',
+                            border: '#334155',
+                            cyan: '#00f0f0',
+                            blue: '#3b82f6',
+                            orange: '#f97316',
+                            yellow: '#eab308',
+                            green: '#22c55e',
+                            purple: '#a855f7',
+                            red: '#ef4444'
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'bounce-short': 'bounce 0.5s infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Desabilita seleção e gestos indesejados no mobile */
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Efeito visual de Tremer a Tela (Screen Shake) */
+        .shake {
+            animation: shake 0.15s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 1px, 0); }
+            20%, 80% { transform: translate3d(2px, -1px, 0); }
+            30%, 50%, 70% { transform: translate3d(-3px, 2px, 0); }
+            40%, 60% { transform: translate3d(3px, -2px, 0); }
+        }
+
+        /* Gradiente animado para o fundo e bordas */
+        .animated-gradient {
+            background: linear-gradient(-45deg, #0f172a, #1e1b4b, #311042, #0f172a);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Estilo do canvas */
+        #gameCanvas {
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.2);
+            border-radius: 12px;
+        }
+
+        /* Botões virtuais interativos */
+        .btn-touch {
+            active: scale-95;
+            transition: transform 0.05s ease, background-color 0.1s ease;
+        }
+
+        .btn-touch:active {
+            transform: scale(0.92);
+            filter: brightness(1.2);
+        }
+
+        /* Estilização da Barra de Progresso do Tempo */
+        .timer-bar {
+            transition: width 0.3s linear, background-color 0.3s ease;
+        }
+
+        /* Animação do texto flutuante */
+        .floating-score {
+            position: absolute;
+            animation: floatUp 1s ease-out forwards;
+            font-weight: 800;
+            pointer-events: none;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(0.8); }
+            50% { opacity: 1; transform: translateY(-20px) scale(1.2); }
+            100% { opacity: 0; transform: translateY(-40px) scale(1); }
+        }
+    </style>
+</head>
+<body class="animated-gradient text-white min-h-screen flex flex-col justify-between font-sans overflow-x-hidden select-none">
+
+    <!-- CABEÇALHO DA PÁGINA -->
+    <header class="w-full bg-slate-900/80 backdrop-blur-md border-b border-white/10 px-4 py-3 flex justify-between items-center z-20">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                <i class="fa-solid font-bold text-xl text-white text-shadow">🧩</i>
+            </div>
+            <div>
+                <h1 class="font-fredoka text-xl sm:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-300 via-pink-400 to-cyan-300">
+                    Tetris Lúdico
+                </h1>
+                <p class="text-xs text-slate-400 hidden sm:block">Aventura Colorida de Blocos</p>
+            </div>
+        </div>
+
+        <!-- Controles Superiores: Som, Pausa, Instruções -->
+        <div class="flex items-center gap-2 sm:gap-3">
+            <button id="btnSound" onclick="toggleSound()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-400 transition-all flex items-center justify-center w-10 h-10" title="Alternar Som">
+                <i id="soundIcon" class="fa-solid fa-volume-high text-lg"></i>
+            </button>
+            <button id="btnHelp" onclick="openModal('helpModal')" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-400 transition-all flex items-center justify-center w-10 h-10" title="Como Jogar">
+                <i class="fa-solid fa-circle-question text-lg"></i>
+            </button>
+            <button id="btnPause" onclick="togglePause()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-purple-400 transition-all flex items-center justify-center w-10 h-10" title="Pausar">
+                <i id="pauseIcon" class="fa-solid fa-pause text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- CONTEÚDO PRINCIPAL / GAMEPLAY -->
+    <main class="flex-grow flex flex-col items-center justify-center p-2 sm:p-4 gap-4 max-w-6xl mx-auto w-full">
+
+        <!-- Barra Superior de Estatísticas do Modo de Jogo -->
+        <div class="w-full max-w-md sm:max-w-xl bg-slate-800/80 backdrop-blur-md rounded-2xl p-3 border border-slate-700/80 shadow-xl flex flex-col gap-2">
+            <div class="flex justify-between items-center text-xs sm:text-sm font-semibold">
+                <div class="flex items-center gap-2">
+                    <span id="badgeMode" class="px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase text-[10px] tracking-wider font-bold">
+                        Fases
+                    </span>
+                    <span id="badgeDiff" class="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase text-[10px] tracking-wider font-bold">
+                        Fácil
+                    </span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span class="text-slate-300">Fase: <strong id="lblLevel" class="text-amber-300 text-base font-fredoka">1</strong></span>
+                    <span class="text-slate-300">Meta: <strong id="lblLines" class="text-cyan-300 text-base font-fredoka">0/5</strong></span>
+                </div>
+            </div>
+
+            <!-- Barra Progressiva de Tempo (Modo Fases) -->
+            <div id="timerContainer" class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-700/50 relative">
+                <div id="timerBar" class="timer-bar h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500 w-full rounded-full"></div>
+                <span id="lblTimerText" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow">
+                    120s
+                </span>
+            </div>
+        </div>
+
+        <!-- ÁREA CENTRAL DO JOGO -->
+        <div class="flex flex-col md:flex-row items-center md:items-start justify-center gap-3 sm:gap-6 w-full relative">
+
+            <!-- Painel Esquerdo (Hold & Status Adicionais) -->
+            <div class="hidden md:flex flex-col gap-4 w-32 shrink-0">
+                <!-- Guardar Peça (HOLD) -->
+                <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 flex flex-col items-center shadow-lg">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Guardar (C)</span>
+                    <canvas id="holdCanvas" width="80" height="80" class="bg-slate-950/60 rounded-xl border border-slate-800"></canvas>
+                </div>
+
+                <!-- Recorde / High Score -->
+                <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 flex flex-col items-center text-center shadow-lg">
+                    <i class="fa-solid fa-trophy text-amber-400 text-xl mb-1"></i>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Recorde</span>
+                    <span id="lblHighScore" class="font-fredoka text-lg text-amber-300 font-bold">0</span>
+                </div>
+            </div>
+
+            <!-- Canvas Principal da Arena -->
+            <div class="relative flex flex-col items-center">
+                <div id="canvasWrapper" class="relative rounded-2xl p-1.5 bg-gradient-to-b from-slate-700/50 to-slate-900/80 border border-slate-600/50 shadow-2xl">
+                    <canvas id="gameCanvas" width="240" height="480" class="block bg-slate-950/90 rounded-xl"></canvas>
+
+                    <!-- Overlay do Canvas para Efeitos Flutuantes -->
+                    <div id="floatingOverlay" class="absolute inset-0 pointer-events-none overflow-hidden rounded-xl"></div>
+                </div>
+            </div>
+
+            <!-- Painel Direito (Próxima Peça & Placar) -->
+            <div class="flex md:flex-col justify-between md:justify-start gap-3 w-full max-w-md md:w-32 shrink-0">
+                
+                <!-- Próxima Peça (NEXT) -->
+                <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 flex flex-col items-center shadow-lg flex-1 md:flex-none">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Próxima</span>
+                    <canvas id="nextCanvas" width="80" height="80" class="bg-slate-950/60 rounded-xl border border-slate-800"></canvas>
+                </div>
+
+                <!-- Mobile Hold Canvas (Apenas em telas pequenas) -->
+                <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-2 flex flex-col items-center shadow-lg md:hidden flex-1">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Guardar</span>
+                    <canvas id="holdCanvasMobile" width="60" height="60" class="bg-slate-950/60 rounded-xl border border-slate-800"></canvas>
+                </div>
+
+                <!-- Pontuação -->
+                <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 flex flex-col items-center text-center shadow-lg flex-1 md:flex-none">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pontuação</span>
+                    <span id="lblScore" class="font-fredoka text-xl text-emerald-400 font-bold">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTROLES VIRTUAIS NA TELA (MOBILE / TABLET) -->
+        <div class="w-full max-w-md bg-slate-900/90 backdrop-blur-md rounded-2xl p-3 border border-slate-800 flex flex-col gap-2 mt-1">
+            <div class="grid grid-cols-5 gap-2">
+                <!-- Esquerda -->
+                <button id="btnLeft" class="btn-touch col-span-1 bg-slate-800 active:bg-purple-600 border border-slate-700 text-white rounded-xl py-3 flex items-center justify-center text-xl shadow-md">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <!-- Rotação -->
+                <button id="btnRotate" class="btn-touch col-span-1 bg-indigo-600 active:bg-indigo-500 border border-indigo-400 text-white rounded-xl py-3 flex items-center justify-center text-xl shadow-md shadow-indigo-600/30">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+                <!-- Direita -->
+                <button id="btnRight" class="btn-touch col-span-1 bg-slate-800 active:bg-purple-600 border border-slate-700 text-white rounded-xl py-3 flex items-center justify-center text-xl shadow-md">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+                <!-- Guardar (Hold) Mobile -->
+                <button id="btnHold" class="btn-touch col-span-1 bg-amber-600 active:bg-amber-500 border border-amber-400 text-white rounded-xl py-3 flex items-center justify-center text-lg shadow-md">
+                    <i class="fa-solid fa-box-archive"></i>
+                </button>
+                <!-- Queda Rápida (Soft Drop) -->
+                <button id="btnDown" class="btn-touch col-span-1 bg-slate-800 active:bg-purple-600 border border-slate-700 text-white rounded-xl py-3 flex items-center justify-center text-xl shadow-md">
+                    <i class="fa-solid fa-arrow-down"></i>
+                </button>
+            </div>
+            <!-- Queda Instantânea (Hard Drop) -->
+            <button id="btnHardDrop" class="btn-touch w-full bg-gradient-to-r from-pink-600 to-purple-600 active:from-pink-500 active:to-purple-500 border border-pink-400 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm uppercase tracking-wider shadow-lg shadow-purple-600/20">
+                <i class="fa-solid fa-angles-down"></i> Soltar Peça
+            </button>
+        </div>
+
+    </main>
+
+    <!-- MODAL DE MENU PRINCIPAL -->
+    <div id="menuModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center flex flex-col gap-5">
+            <div>
+                <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-pink-500 mx-auto flex items-center justify-center text-3xl shadow-xl shadow-purple-500/40 mb-3">
+                    🎮
+                </div>
+                <h2 class="font-fredoka text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-pink-400 to-cyan-300">
+                    Tetris Lúdico
+                </h2>
+                <p class="text-slate-400 text-sm mt-1">Escolha o modo de jogo e divirta-se!</p>
+            </div>
+
+            <!-- Seleção de Modo -->
+            <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-slate-400 text-left">Modo de Jogo</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="modeStageBtn" onclick="selectMode('stage')" class="p-3 rounded-xl border-2 border-purple-500 bg-purple-500/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all">
+                        <i class="fa-solid fa-flag-checkered"></i> Fases
+                    </button>
+                    <button id="modeEndlessBtn" onclick="selectMode('endless')" class="p-3 rounded-xl border-2 border-slate-700 bg-slate-800 text-slate-300 font-bold text-sm flex items-center justify-center gap-2 transition-all">
+                        <i class="fa-solid fa-infinity"></i> Infinito
+                    </button>
+                </div>
+            </div>
+
+            <!-- Seleção de Dificuldade -->
+            <div class="flex flex-col gap-2">
+                <label class="text-xs font-bold uppercase tracking-wider text-slate-400 text-left">Dificuldade</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <button id="diffEasyBtn" onclick="selectDiff('easy')" class="p-2.5 rounded-xl border-2 border-emerald-500 bg-emerald-500/20 text-emerald-300 font-bold text-xs transition-all">
+                        Fácil
+                    </button>
+                    <button id="diffMediumBtn" onclick="selectDiff('medium')" class="p-2.5 rounded-xl border-2 border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs transition-all">
+                        Médio
+                    </button>
+                    <button id="diffHardBtn" onclick="selectDiff('hard')" class="p-2.5 rounded-xl border-2 border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs transition-all">
+                        Difícil
+                    </button>
+                </div>
+            </div>
+
+            <button onclick="startGame()" class="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-fredoka font-bold text-xl shadow-lg shadow-emerald-500/30 active:scale-95 transition-all mt-2">
+                <i class="fa-solid fa-play mr-2"></i> Iniciar Jogo
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL DE PAUSA -->
+    <div id="pauseModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center flex flex-col gap-4 shadow-2xl">
+            <h3 class="font-fredoka text-2xl font-bold text-amber-300">Jogo Pausado</h3>
+            <p class="text-slate-300 text-sm">Respire fundo e continue quando estiver pronto!</p>
+            <div class="flex flex-col gap-2 mt-2">
+                <button onclick="togglePause()" class="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-base shadow-lg transition-all">
+                    Continuar
+                </button>
+                <button onclick="returnToMenu()" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-base border border-slate-700 transition-all">
+                    Menu Principal
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE FASE CONCLUÍDA (VITÓRIA) -->
+    <div id="winModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center flex flex-col items-center gap-4 shadow-2xl">
+            <div class="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-3xl border border-amber-500/30">
+                🏆
+            </div>
+            <h3 class="font-fredoka text-2xl font-bold text-amber-300">Fase Concluída!</h3>
+            
+            <!-- Estrelas conquistadas -->
+            <div id="starsContainer" class="flex gap-2 text-3xl text-amber-400 my-1">
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star"></i>
+                <i class="fa-solid fa-star"></i>
+            </div>
+
+            <div class="bg-slate-800/80 w-full rounded-2xl p-3 border border-slate-700 text-sm flex flex-col gap-1.5 text-slate-300">
+                <div class="flex justify-between">
+                    <span>Bônus de Tempo:</span>
+                    <strong id="lblTimeBonus" class="text-emerald-400">+0</strong>
+                </div>
+                <div class="flex justify-between">
+                    <span>Pontuação Total:</span>
+                    <strong id="lblWinScore" class="text-amber-300">0</strong>
+                </div>
+            </div>
+
+            <button onclick="nextStage()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-fredoka font-bold text-lg shadow-lg active:scale-95 transition-all mt-2">
+                Próxima Fase <i class="fa-solid fa-arrow-right ml-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL DE GAME OVER -->
+    <div id="gameOverModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-red-500/30 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center flex flex-col items-center gap-4 shadow-2xl">
+            <div class="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center text-3xl border border-red-500/30">
+                💀
+            </div>
+            <h3 id="gameOverTitle" class="font-fredoka text-2xl font-bold text-red-400">Fim de Jogo!</h3>
+            <p id="gameOverDesc" class="text-slate-300 text-sm">Não desista! Tente novamente para superação.</p>
+
+            <div class="bg-slate-800/80 w-full rounded-2xl p-3 border border-slate-700 text-sm flex flex-col gap-1.5 text-slate-300">
+                <div class="flex justify-between">
+                    <span>Pontuação Final:</span>
+                    <strong id="lblFinalScore" class="text-amber-300">0</strong>
+                </div>
+                <div class="flex justify-between">
+                    <span>Linhas Eliminadas:</span>
+                    <strong id="lblFinalLines" class="text-cyan-300">0</strong>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2 w-full mt-2">
+                <button onclick="restartGame()" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-fredoka font-bold text-lg shadow-lg active:scale-95 transition-all">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Tentar Novamente
+                </button>
+                <button onclick="returnToMenu()" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm border border-slate-700 transition-all">
+                    Menu Principal
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE INSTRUÇÕES -->
+    <div id="helpModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-fredoka text-xl font-bold text-cyan-300">Como Jogar</h3>
+                <button onclick="closeModal('helpModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-slate-300">
+                <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50">
+                    <h4 class="font-bold text-amber-300 mb-1">🎯 Objetivo</h4>
+                    <p>Encaixe as peças geométricas para completar linhas horizontais completas. Ao atingir a meta da fase antes do tempo esgotar, você vence!</p>
+                </div>
+
+                <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50">
+                    <h4 class="font-bold text-purple-300 mb-1">⌨️ Controles do Teclado</h4>
+                    <ul class="list-disc list-inside space-y-1 text-slate-300">
+                        <li><strong>Mover:</strong> Setas &larr; &rarr; ou A / D</li>
+                        <li><strong>Girar:</strong> Seta &uarr; ou W</li>
+                        <li><strong>Descer Rápido:</strong> Seta &darr; ou S</li>
+                        <li><strong>Queda Instantânea:</strong> Espaço</li>
+                        <li><strong>Guardar Peça:</strong> C ou Shift</li>
+                        <li><strong>Pausar:</strong> P ou Esc</li>
+                    </ul>
+                </div>
+
+                <div class="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50">
+                    <h4 class="font-bold text-emerald-300 mb-1">⚡ Dificuldades</h4>
+                    <p><strong>Fácil:</strong> Velocidade suave, sombra guia destacada e mais tempo.</p>
+                    <p><strong>Médio:</strong> Velocidade moderada e tempo equilibrado.</p>
+                    <p><strong>Difícil:</strong> Peças rápidas, tempo curto e meta desafiadora.</p>
+                </div>
+            </div>
+
+            <button onclick="closeModal('helpModal')" class="w-full py-3 rounded-xl bg-purple-600 text-white font-bold text-sm mt-2">
+                Entendi!
+            </button>
+        </div>
+    </div>
+
+    <!-- RODAPÉ DA PÁGINA (OBRIGATÓRIO) -->
+    <footer class="w-full bg-slate-900/90 border-t border-slate-800 py-3.5 px-4 text-center z-10">
+        <div class="max-w-xl mx-auto flex items-center justify-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <p class="font-fredoka text-sm sm:text-base font-semibold text-slate-200 tracking-wide">
+                Jogo desenvolvido pelo Prof. André Rafael Tortato
+            </p>
+        </div>
+    </footer>
+
+    <!-- SCRIPT DO JOGO EM JAVASCRIPT -->
+    <script>
+        /* ==========================================================================
+           SINTETIZADOR DE ÁUDIO VIA WEB AUDIO API (SEM DEPENDÊNCIAS EXTERNAS)
+           ========================================================================== */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playTone(freq, type, duration, startVol = 0.1, endVol = 0.001) {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(startVol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(endVol, this.ctx.currentTime + duration);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch (e) { console.error(e); }
+            }
+
+            move() { this.playTone(300, 'sine', 0.08, 0.08); }
+            rotate() { this.playTone(450, 'triangle', 0.1, 0.1); }
+            drop() { this.playTone(180, 'square', 0.1, 0.08); }
+            hardDrop() {
+                this.playTone(120, 'sawtooth', 0.15, 0.2);
+                this.playTone(80, 'sine', 0.2, 0.25);
+            }
+            hold() { this.playTone(520, 'sine', 0.12, 0.1); }
+            
+            lineClear() {
+                if (!this.enabled) return;
+                const notes = [400, 500, 600, 800];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'sine', 0.15, 0.15), idx * 60);
+                });
+            }
+
+            stageWin() {
+                if (!this.enabled) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'triangle', 0.25, 0.2), idx * 120);
+                });
+            }
+
+            gameOver() {
+                if (!this.enabled) return;
+                const notes = [400, 350, 300, 220];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'sawtooth', 0.25, 0.15), idx * 120);
+                });
+            }
+        }
+
+        const soundFX = new SoundFX();
+
+        function toggleSound() {
+            soundFX.enabled = !soundFX.enabled;
+            const icon = document.getElementById('soundIcon');
+            const btn = document.getElementById('btnSound');
+            if (soundFX.enabled) {
+                icon.className = 'fa-solid fa-volume-high text-lg';
+                btn.classList.remove('opacity-50');
+                soundFX.move();
+            } else {
+                icon.className = 'fa-solid fa-volume-xmark text-lg';
+                btn.classList.add('opacity-50');
+            }
+        }
+
+        /* ==========================================================================
+           CONFIGURAÇÕES DAS PEÇAS (TETRAMINÓS) E CORES LÚDICAS
+           ========================================================================== */
+        const COLS = 10;
+        const ROWS = 20;
+
+        // Formatos das peças I, J, L, O, S, T, Z
+        const SHAPES = {
+            I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+            J: [[1,0,0],[1,1,1],[0,0,0]],
+            L: [[0,0,1],[1,1,1],[0,0,0]],
+            O: [[1,1],[1,1]],
+            S: [[0,1,1],[1,1,0],[0,0,0]],
+            T: [[0,1,0],[1,1,1],[0,0,0]],
+            Z: [[1,1,0],[0,1,1],[0,0,0]]
+        };
+
+        // Paleta de Cores com Gradientes Brilhantes para visual 3D lúdico
+        const PALETTE = {
+            I: { main: '#06b6d4', light: '#67e8f9', dark: '#0891b2' }, // Cyan
+            J: { main: '#3b82f6', light: '#93c5fd', dark: '#1d4ed8' }, // Blue
+            L: { main: '#f97316', light: '#fdba74', dark: '#c2410c' }, // Orange
+            O: { main: '#eab308', light: '#fde047', dark: '#a16207' }, // Yellow
+            S: { main: '#22c55e', light: '#86efac', dark: '#15803d' }, // Green
+            T: { main: '#a855f7', light: '#d8b4fe', dark: '#7e22ce' }, // Purple
+            Z: { main: '#ef4444', light: '#fca5a5', dark: '#b91c1c' }  // Red
+        };
+
+        /* ==========================================================================
+           ESTADO GLOBAL DO JOGO
+           ========================================================================== */
+        let canvas, ctx;
+        let nextCanvas, nextCtx;
+        let holdCanvas, holdCtx, holdCanvasMobile, holdCtxMobile;
+
+        // Inicializa o grid padrão para evitar erros no render loop antes do início do jogo
+        let grid = createGrid();
+        let score = 0;
+        let linesCleared = 0;
+        let stage = 1;
+        let timeRemaining = 120;
+        let maxTime = 120;
+        let targetLines = 5;
+        let highScore = localStorage.getItem('tetris_ludico_highscore') || 0;
+
+        let gameMode = 'stage'; // 'stage' ou 'endless'
+        let difficulty = 'easy'; // 'easy', 'medium', 'hard'
+
+        let currentPiece = null;
+        let nextPiece = null;
+        let holdPiece = null;
+        let canHold = true;
+
+        let bag = [];
+        let lastTime = 0;
+        let dropCounter = 0;
+        let dropInterval = 800; // ms por queda
+        let isPaused = false;
+        let isGameOver = false;
+        let isStageWin = false;
+        let timerInterval = null;
+        let particles = [];
+
+        /* ==========================================================================
+           INICIALIZAÇÃO DO CANVAS E EVENTOS DE CARREGAMENTO
+           ========================================================================== */
+        window.onload = () => {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+
+            nextCanvas = document.getElementById('nextCanvas');
+            nextCtx = nextCanvas.getContext('2d');
+
+            holdCanvas = document.getElementById('holdCanvas');
+            holdCtx = holdCanvas.getContext('2d');
+
+            holdCanvasMobile = document.getElementById('holdCanvasMobile');
+            holdCtxMobile = holdCanvasMobile.getContext('2d');
+
+            document.getElementById('lblHighScore').innerText = highScore;
+
+            setupKeyboard();
+            setupTouchControls();
+
+            // Modal inicial
+            openModal('menuModal');
+
+            // Render loop para partículas e animações
+            requestAnimationFrame(gameLoop);
+        };
+
+        /* ==========================================================================
+           SELEÇÃO DE MODO E DIFICULDADE
+           ========================================================================== */
+        function selectMode(m) {
+            gameMode = m;
+            document.getElementById('modeStageBtn').className = m === 'stage' 
+                ? 'p-3 rounded-xl border-2 border-purple-500 bg-purple-500/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all'
+                : 'p-3 rounded-xl border-2 border-slate-700 bg-slate-800 text-slate-300 font-bold text-sm flex items-center justify-center gap-2 transition-all';
+
+            document.getElementById('modeEndlessBtn').className = m === 'endless'
+                ? 'p-3 rounded-xl border-2 border-purple-500 bg-purple-500/20 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all'
+                : 'p-3 rounded-xl border-2 border-slate-700 bg-slate-800 text-slate-300 font-bold text-sm flex items-center justify-center gap-2 transition-all';
+        }
+
+        function selectDiff(d) {
+            difficulty = d;
+            ['easy', 'medium', 'hard'].forEach(diff => {
+                const btn = document.getElementById(`diff${diff.charAt(0).toUpperCase() + diff.slice(1)}Btn`);
+                if (diff === d) {
+                    btn.className = `p-2.5 rounded-xl border-2 border-emerald-500 bg-emerald-500/20 text-emerald-300 font-bold text-xs transition-all`;
+                } else {
+                    btn.className = `p-2.5 rounded-xl border-2 border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs transition-all`;
+                }
+            });
+        }
+
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+        /* ==========================================================================
+           LOGICA DAS REGRAS DAS DIFICULDADES E FASES
+           ========================================================================== */
+        function setupStageParameters() {
+            if (gameMode === 'stage') {
+                if (difficulty === 'easy') {
+                    dropInterval = Math.max(200, 800 - (stage - 1) * 40);
+                    maxTime = 120;
+                    targetLines = 5 + (stage - 1) * 3;
+                } else if (difficulty === 'medium') {
+                    dropInterval = Math.max(150, 550 - (stage - 1) * 50);
+                    maxTime = 90;
+                    targetLines = 8 + (stage - 1) * 4;
+                } else { // Hard
+                    dropInterval = Math.max(100, 350 - (stage - 1) * 40);
+                    maxTime = 60;
+                    targetLines = 10 + (stage - 1) * 5;
+                }
+                document.getElementById('timerContainer').style.display = 'block';
+            } else { // Endless
+                dropInterval = Math.max(100, 700 - Math.floor(linesCleared / 10) * 50);
+                document.getElementById('timerContainer').style.display = 'none';
+            }
+
+            timeRemaining = maxTime;
+            updateUI();
+        }
+
+        function startGame() {
+            soundFX.init();
+            closeModal('menuModal');
+            closeModal('gameOverModal');
+            closeModal('winModal');
+
+            stage = 1;
+            score = 0;
+            linesCleared = 0;
+            grid = createGrid();
+            holdPiece = null;
+            canHold = true;
+            bag = [];
+            
+            // Inicializar peças antes da atualização de UI e parâmetros
+            currentPiece = getRandomPiece();
+            nextPiece = getRandomPiece();
+
+            setupStageParameters();
+
+            isPaused = false;
+            isGameOver = false;
+            isStageWin = false;
+
+            startTimer();
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            if (gameMode !== 'stage') return;
+
+            timerInterval = setInterval(() => {
+                if (!isPaused && !isGameOver && !isStageWin) {
+                    timeRemaining--;
+                    updateTimerUI();
+
+                    if (timeRemaining <= 0) {
+                        triggerGameOver("O tempo acabou!");
+                    }
+                }
+            }, 1000);
+        }
+
+        function updateTimerUI() {
+            const bar = document.getElementById('timerBar');
+            const text = document.getElementById('lblTimerText');
+            const pct = Math.max(0, (timeRemaining / maxTime) * 100);
+            
+            bar.style.width = `${pct}%`;
+            text.innerText = `${timeRemaining}s`;
+
+            if (pct < 25) {
+                bar.className = "timer-bar h-full bg-red-500 w-full rounded-full animate-pulse";
+            } else if (pct < 50) {
+                bar.className = "timer-bar h-full bg-amber-400 w-full rounded-full";
+            } else {
+                bar.className = "timer-bar h-full bg-emerald-400 w-full rounded-full";
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('lblScore').innerText = score;
+            document.getElementById('lblLevel').innerText = stage;
+            document.getElementById('lblHighScore').innerText = highScore;
+
+            if (gameMode === 'stage') {
+                document.getElementById('lblLines').innerText = `${linesCleared}/${targetLines}`;
+                document.getElementById('badgeMode').innerText = 'Fases';
+            } else {
+                document.getElementById('lblLines').innerText = `${linesCleared}`;
+                document.getElementById('badgeMode').innerText = 'Infinito';
+            }
+
+            const diffNames = { easy: 'Fácil', medium: 'Médio', hard: 'Difícil' };
+            document.getElementById('badgeDiff').innerText = diffNames[difficulty];
+
+            updateTimerUI();
+            drawPreviewCanvas(nextCtx, nextPiece);
+            drawPreviewCanvas(holdCtx, holdPiece);
+            drawPreviewCanvas(holdCtxMobile, holdPiece);
+        }
+
+        /* ==========================================================================
+           MOTOR DE TETRIS (GRID, PEÇAS, ROTAÇÃO, COLISÃO)
+           ========================================================================== */
+        function createGrid() {
+            return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+        }
+
+        function getRandomPiece() {
+            if (bag.length === 0) {
+                bag = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+                // Shuffle bag (Fisher-Yates)
+                for (let i = bag.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [bag[i], bag[j]] = [bag[j], bag[i]];
+                }
+            }
+            const type = bag.pop();
+            const shape = SHAPES[type];
+            return {
+                type: type,
+                shape: shape,
+                x: Math.floor((COLS - shape[0].length) / 2),
+                y: 0
+            };
+        }
+
+        function collide(board, piece, offsetX = 0, offsetY = 0, customShape = null) {
+            const shape = customShape || piece.shape;
+            if (!shape) return true;
+
+            for (let r = 0; r < shape.length; r++) {
+                for (let c = 0; c < shape[r].length; c++) {
+                    if (shape[r][c]) {
+                        const newX = piece.x + c + offsetX;
+                        const newY = piece.y + r + offsetY;
+
+                        if (newX < 0 || newX >= COLS || newY >= ROWS) return true;
+                        if (newY >= 0 && board[newY] && board[newY][newX]) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function rotate(matrix) {
+            const N = matrix.length;
+            const result = Array.from({ length: N }, () => Array(N).fill(0));
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    result[c][N - 1 - r] = matrix[r][c];
+                }
+            }
+            return result;
+        }
+
+        function playerRotate() {
+            if (isPaused || isGameOver || isStageWin) return;
+            const rotated = rotate(currentPiece.shape);
+            
+            // Tentativa simples de Wall Kick
+            let offset = 0;
+            if (!collide(grid, currentPiece, 0, 0, rotated)) {
+                currentPiece.shape = rotated;
+                soundFX.rotate();
+            } else if (!collide(grid, currentPiece, -1, 0, rotated)) {
+                currentPiece.x -= 1;
+                currentPiece.shape = rotated;
+                soundFX.rotate();
+            } else if (!collide(grid, currentPiece, 1, 0, rotated)) {
+                currentPiece.x += 1;
+                currentPiece.shape = rotated;
+                soundFX.rotate();
+            }
+        }
+
+        function playerMove(dir) {
+            if (isPaused || isGameOver || isStageWin) return;
+            if (!collide(grid, currentPiece, dir, 0)) {
+                currentPiece.x += dir;
+                soundFX.move();
+            }
+        }
+
+        function playerDrop() {
+            if (isPaused || isGameOver || isStageWin) return;
+            if (!collide(grid, currentPiece, 0, 1)) {
+                currentPiece.y++;
+                dropCounter = 0;
+            } else {
+                lockPiece();
+            }
+        }
+
+        function playerHardDrop() {
+            if (isPaused || isGameOver || isStageWin) return;
+            while (!collide(grid, currentPiece, 0, 1)) {
+                currentPiece.y++;
+                score += 2;
+            }
+            soundFX.hardDrop();
+            triggerScreenShake();
+            lockPiece();
+        }
+
+        function playerHold() {
+            if (isPaused || isGameOver || isStageWin || !canHold) return;
+
+            soundFX.hold();
+            if (!holdPiece) {
+                holdPiece = currentPiece.type;
+                currentPiece = nextPiece;
+                nextPiece = getRandomPiece();
+            } else {
+                const temp = holdPiece;
+                holdPiece = currentPiece.type;
+                currentPiece = {
+                    type: temp,
+                    shape: SHAPES[temp],
+                    x: Math.floor((COLS - SHAPES[temp][0].length) / 2),
+                    y: 0
+                };
+            }
+            canHold = false;
+            updateUI();
+        }
+
+        function lockPiece() {
+            // Fixa a peça no grid
+            for (let r = 0; r < currentPiece.shape.length; r++) {
+                for (let c = 0; c < currentPiece.shape[r].length; c++) {
+                    if (currentPiece.shape[r][c]) {
+                        const boardY = currentPiece.y + r;
+                        const boardX = currentPiece.x + c;
+                        if (boardY < 0) {
+                            triggerGameOver("A arena lotou!");
+                            return;
+                        }
+                        grid[boardY][boardX] = currentPiece.type;
+                    }
+                }
+            }
+
+            soundFX.drop();
+            checkLineClears();
+
+            currentPiece = nextPiece;
+            nextPiece = getRandomPiece();
+            canHold = true;
+
+            // Se ao nascer já colidir -> Game Over
+            if (collide(grid, currentPiece)) {
+                triggerGameOver("A arena lotou!");
+            }
+
+            updateUI();
+        }
+
+        function checkLineClears() {
+            let linesClearedThisTurn = 0;
+            let clearedRows = [];
+
+            for (let r = ROWS - 1; r >= 0; r--) {
+                if (grid[r].every(cell => cell !== 0)) {
+                    linesClearedThisTurn++;
+                    clearedRows.push(r);
+                }
+            }
+
+            if (linesClearedThisTurn > 0) {
+                soundFX.lineClear();
+
+                // Efeito de partículas
+                clearedRows.forEach(r => {
+                    for (let c = 0; c < COLS; c++) {
+                        createParticles((c + 0.5) * (canvas.width / COLS), (r + 0.5) * (canvas.height / ROWS), PALETTE[grid[r][c]]?.main || '#fff');
+                    }
+                });
+
+                // Remover linhas
+                for (let i = 0; i < linesClearedThisTurn; i++) {
+                    grid.splice(clearedRows[i], 1);
+                    grid.unshift(Array(COLS).fill(0));
+                }
+
+                // Pontuação Tetris
+                const linePoints = [0, 100, 300, 500, 800];
+                const pts = (linePoints[linesClearedThisTurn] || 100) * stage;
+                score += pts;
+                linesCleared += linesClearedThisTurn;
+
+                // Texto Flutuante
+                showFloatingText(`+${pts}`, canvas.width / 2, (clearedRows[0] || 5) * (canvas.height / ROWS));
+
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem('tetris_ludico_highscore', highScore);
+                }
+
+                // Checar Vitória da Fase
+                if (gameMode === 'stage' && linesCleared >= targetLines) {
+                    triggerStageWin();
+                }
+
+                // Atualizar velocidade no modo infinito
+                if (gameMode === 'endless') {
+                    dropInterval = Math.max(100, 700 - Math.floor(linesCleared / 10) * 50);
+                }
+            }
+        }
+
+        /* ==========================================================================
+           SISTEMA DE VITÓRIA, DERROTA E TRANSIÇÃO DE FASES
+           ========================================================================== */
+        function triggerStageWin() {
+            isStageWin = true;
+            clearInterval(timerInterval);
+            soundFX.stageWin();
+
+            // Confetes festivos!
+            if (window.confetti) {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            }
+
+            const timeBonus = timeRemaining * 50;
+            score += timeBonus;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('tetris_ludico_highscore', highScore);
+            }
+
+            // Calcular estrelas
+            const starsContainer = document.getElementById('starsContainer');
+            const pctTimeLeft = timeRemaining / maxTime;
+            let starCount = 1;
+            if (pctTimeLeft > 0.5) starCount = 3;
+            else if (pctTimeLeft > 0.25) starCount = 2;
+
+            starsContainer.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                if (i < starCount) {
+                    starsContainer.innerHTML += '<i class="fa-solid fa-star text-amber-400 drop-shadow"></i>';
+                } else {
+                    starsContainer.innerHTML += '<i class="fa-solid fa-star text-slate-700"></i>';
+                }
+            }
+
+            document.getElementById('lblTimeBonus').innerText = `+${timeBonus}`;
+            document.getElementById('lblWinScore').innerText = score;
+
+            openModal('winModal');
+        }
+
+        function nextStage() {
+            stage++;
+            linesCleared = 0;
+            grid = createGrid();
+            closeModal('winModal');
+            setupStageParameters();
+
+            isStageWin = false;
+            startTimer();
+        }
+
+        function triggerGameOver(reason) {
+            isGameOver = true;
+            clearInterval(timerInterval);
+            soundFX.gameOver();
+
+            document.getElementById('gameOverDesc').innerText = reason;
+            document.getElementById('lblFinalScore').innerText = score;
+            document.getElementById('lblFinalLines').innerText = linesCleared;
+
+            openModal('gameOverModal');
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function togglePause() {
+            if (isGameOver || isStageWin) return;
+            isPaused = !isPaused;
+            const icon = document.getElementById('pauseIcon');
+            
+            if (isPaused) {
+                icon.className = 'fa-solid fa-play text-lg';
+                openModal('pauseModal');
+            } else {
+                icon.className = 'fa-solid fa-pause text-lg';
+                closeModal('pauseModal');
+            }
+        }
+
+        function returnToMenu() {
+            clearInterval(timerInterval);
+            closeModal('pauseModal');
+            closeModal('gameOverModal');
+            closeModal('winModal');
+            openModal('menuModal');
+        }
+
+        /* ==========================================================================
+           RENDERIZAÇÃO GRÁFICA (BLOCOS 3D, SOMBRA GUIA, PARTÍCULAS)
+           ========================================================================== */
+        function gameLoop(time = 0) {
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            if (!isPaused && !isGameOver && !isStageWin && currentPiece) {
+                dropCounter += deltaTime;
+                if (dropCounter > dropInterval) {
+                    playerDrop();
+                }
+            }
+
+            render();
+            updateParticles();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const blockWidth = canvas.width / COLS;
+            const blockHeight = canvas.height / ROWS;
+
+            // Renderizar Grade Suave de Fundo
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.lineWidth = 1;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    ctx.strokeRect(c * blockWidth, r * blockHeight, blockWidth, blockHeight);
+                }
+            }
+
+            // Renderizar Blocos Fixos do Grid
+            for (let r = 0; r < ROWS; r++) {
+                if (!grid[r]) continue;
+                for (let c = 0; c < COLS; c++) {
+                    if (grid[r][c]) {
+                        drawBlock(ctx, c * blockWidth, r * blockHeight, blockWidth, blockHeight, grid[r][c]);
+                    }
+                }
+            }
+
+            if (currentPiece && !isGameOver && !isStageWin) {
+                // Renderizar Peça Fantasma (Ghost Piece)
+                let ghostY = currentPiece.y;
+                while (!collide(grid, currentPiece, 0, ghostY - currentPiece.y + 1)) {
+                    ghostY++;
+                }
+
+                for (let r = 0; r < currentPiece.shape.length; r++) {
+                    for (let c = 0; c < currentPiece.shape[r].length; c++) {
+                        if (currentPiece.shape[r][c]) {
+                            drawGhostBlock(
+                                ctx,
+                                (currentPiece.x + c) * blockWidth,
+                                (ghostY + r) * blockHeight,
+                                blockWidth,
+                                blockHeight,
+                                currentPiece.type
+                            );
+                        }
+                    }
+                }
+
+                // Renderizar Peça Atual
+                for (let r = 0; r < currentPiece.shape.length; r++) {
+                    for (let c = 0; c < currentPiece.shape[r].length; c++) {
+                        if (currentPiece.shape[r][c]) {
+                            drawBlock(
+                                ctx,
+                                (currentPiece.x + c) * blockWidth,
+                                (currentPiece.y + r) * blockHeight,
+                                blockWidth,
+                                blockHeight,
+                                currentPiece.type
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Renderizar partículas
+            drawParticles(ctx);
+        }
+
+        // Helper para compatibilidade de bordas arredondadas em canvas
+        function drawRoundRect(context, x, y, w, h, r) {
+            if (context.roundRect) {
+                context.roundRect(x, y, w, h, r);
+            } else {
+                context.rect(x, y, w, h);
+            }
+        }
+
+        // Desenha um Bloco Lúdico 3D Estilizado com Gradientes e Bordas Arredondadas
+        function drawBlock(context, x, y, w, h, type) {
+            const colors = PALETTE[type] || { main: '#a855f7', light: '#d8b4fe', dark: '#7e22ce' };
+            const radius = 4;
+
+            context.save();
+
+            // Sombra leve sob o bloco
+            context.fillStyle = colors.dark;
+            context.beginPath();
+            drawRoundRect(context, x, y, w, h, radius);
+            context.fill();
+
+            // Corpo Principal com Gradiente
+            const grad = context.createLinearGradient(x, y, x + w, y + h);
+            grad.addColorStop(0, colors.light);
+            grad.addColorStop(0.5, colors.main);
+            grad.addColorStop(1, colors.dark);
+
+            context.fillStyle = grad;
+            context.beginPath();
+            drawRoundRect(context, x + 1, y + 1, w - 2, h - 2, radius);
+            context.fill();
+
+            // Brilho no topo (Efeito 3D Cristalino)
+            context.fillStyle = 'rgba(255, 255, 255, 0.35)';
+            context.beginPath();
+            drawRoundRect(context, x + 2, y + 2, w - 4, (h - 4) / 3, radius / 2);
+            context.fill();
+
+            context.restore();
+        }
+
+        // Desenha a Peça Sombra (Fantasma)
+        function drawGhostBlock(context, x, y, w, h, type) {
+            const colors = PALETTE[type] || { main: '#fff' };
+            context.save();
+            context.strokeStyle = colors.light;
+            context.lineWidth = 1.5;
+            context.fillStyle = 'rgba(255, 255, 255, 0.08)';
+            
+            context.beginPath();
+            drawRoundRect(context, x + 1, y + 1, w - 2, h - 2, 4);
+            context.fill();
+            context.stroke();
+            context.restore();
+        }
+
+        // Renderização dos Canvases Secundários (Próxima e Guardar)
+        function drawPreviewCanvas(context, pieceType) {
+            if (!context) return;
+            context.clearRect(0, 0, context.canvas.width, context.canvas.height);
+            if (!pieceType) return;
+
+            const shape = typeof pieceType === 'string' ? SHAPES[pieceType] : pieceType.shape;
+            const type = typeof pieceType === 'string' ? pieceType : pieceType.type;
+
+            if (!shape || !shape.length || !shape[0]) return;
+
+            const rows = shape.length;
+            const cols = shape[0].length;
+
+            const cellSize = Math.min(context.canvas.width / (cols + 1), context.canvas.height / (rows + 1));
+            const offsetX = (context.canvas.width - cols * cellSize) / 2;
+            const offsetY = (context.canvas.height - rows * cellSize) / 2;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (shape[r][c]) {
+                        drawBlock(
+                            context,
+                            offsetX + c * cellSize,
+                            offsetY + r * cellSize,
+                            cellSize,
+                            cellSize,
+                            type
+                        );
+                    }
+                }
+            }
+        }
+
+        /* ==========================================================================
+           EFEITOS VISUAIS: PARTÍCULAS E TREMOR DE TELA
+           ========================================================================== */
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6 - 2,
+                    color: color,
+                    size: Math.random() * 4 + 2,
+                    alpha: 1,
+                    life: 1
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.15; // Gravidade
+                p.alpha -= 0.025;
+                p.life -= 0.025;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawParticles(context) {
+            context.save();
+            particles.forEach(p => {
+                context.globalAlpha = Math.max(0, p.alpha);
+                context.fillStyle = p.color;
+                context.beginPath();
+                context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                context.fill();
+            });
+            context.restore();
+        }
+
+        function triggerScreenShake() {
+            const wrapper = document.getElementById('canvasWrapper');
+            wrapper.classList.remove('shake');
+            void wrapper.offsetWidth; // Trigger reflow
+            wrapper.classList.add('shake');
+        }
+
+        function showFloatingText(text, x, y) {
+            const overlay = document.getElementById('floatingOverlay');
+            const el = document.createElement('div');
+            el.className = 'floating-score text-amber-300 text-2xl font-fredoka';
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            el.innerText = text;
+
+            overlay.appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        /* ==========================================================================
+           CONTROLES DE TECLADO E TOQUE VIRTUAL
+           ========================================================================== */
+        function setupKeyboard() {
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                    playerMove(-1);
+                } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                    playerMove(1);
+                } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                    playerDrop();
+                } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                    playerRotate();
+                } else if (e.code === 'Space') {
+                    e.preventDefault();
+                    playerHardDrop();
+                } else if (e.key === 'c' || e.key === 'C' || e.key === 'Shift') {
+                    playerHold();
+                } else if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+                    togglePause();
+                }
+            });
+        }
+
+        function setupTouchControls() {
+            const bindBtn = (id, action) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+
+                let interval = null;
+
+                const startAction = (e) => {
+                    e.preventDefault();
+                    action();
+                };
+
+                btn.addEventListener('touchstart', startAction, { passive: false });
+                btn.addEventListener('mousedown', startAction);
+            };
+
+            bindBtn('btnLeft', () => playerMove(-1));
+            bindBtn('btnRight', () => playerMove(1));
+            bindBtn('btnRotate', () => playerRotate());
+            bindBtn('btnDown', () => playerDrop());
+            bindBtn('btnHardDrop', () => playerHardDrop());
+            bindBtn('btnHold', () => playerHold());
+        }
+    </script>
+</body>
+</html>
